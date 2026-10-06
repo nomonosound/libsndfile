@@ -329,6 +329,12 @@ typedef struct
 	** header.
 	*/
 	int rf64_downgrade ;
+
+	/*
+	** Set to true when the RF64 file uses the BW64 (ITU-R BS.2088) marker
+	** instead of RF64.
+	*/
+	int bw64 ;
 } WAVLIKE_PRIVATE ;
 
 #define		WAVLIKE_GSM610_BLOCKSIZE	65

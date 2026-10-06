@@ -53,6 +53,7 @@ static void	permission_test (const char *filename, int typemajor) ;
 static void	wavex_amb_test (const char *filename) ;
 static void rf64_downgrade_test (const char *filename) ;
 static void rf64_long_file_downgrade_test (const char *filename) ;
+static void bw64_test (const char *filename) ;
 
 int
 main (int argc, char *argv [])
@@ -146,6 +147,7 @@ main (int argc, char *argv [])
 		filesystem_full_test (SF_FORMAT_RF64 | SF_FORMAT_PCM_16) ;
 		permission_test ("readonly.rf64", SF_FORMAT_RF64) ;
 		rf64_downgrade_test ("downgrade.wav") ;
+		bw64_test ("marker.bw64") ;
 		/* Disable this by default, because it needs to write 4 gigabytes of data. */
 		if (SF_FALSE)
 			rf64_long_file_downgrade_test ("no-downgrade.rf64") ;
@@ -477,6 +479,99 @@ rf64_downgrade_test (const char *filename)
 
 	return ;
 } /* rf64_downgrade_test */
+
+static void
+bw64_check_marker (const char *filename, int line_num)
+{	char	header [16] ;
+	FILE	*fp ;
+
+	exit_if_true ((fp = fopen (filename, "rb")) == NULL, "\n\nLine %d: fopen failed.\n", line_num) ;
+	exit_if_true (fread (header, 1, sizeof (header), fp) != sizeof (header), "\n\nLine %d: fread failed.\n", line_num) ;
+	fclose (fp) ;
+
+	exit_if_true (memcmp (header, "BW64", 4) != 0, "\n\nLine %d: Missing 'BW64' file marker.\n", line_num) ;
+	exit_if_true (memcmp (header + 8, "WAVE", 4) != 0, "\n\nLine %d: Missing 'WAVE' marker.\n", line_num) ;
+	exit_if_true (memcmp (header + 12, "ds64", 4) != 0, "\n\nLine %d: Missing 'ds64' chunk.\n", line_num) ;
+} /* bw64_check_marker */
+
+static void
+bw64_test (const char *filename)
+{	static short	output	[BUFFER_LEN] ;
+	static short	input	[2 * BUFFER_LEN] ;
+
+	SNDFILE		*file ;
+	SF_INFO		sfinfo ;
+	unsigned	k ;
+
+	print_test_name (__func__, filename) ;
+
+	for (k = 0 ; k < ARRAY_LEN (output) ; k++)
+		output [k] = (short) (k * 7 - 3000) ;
+
+	sf_info_clear (&sfinfo) ;
+
+	sfinfo.samplerate	= 48000 ;
+	sfinfo.channels		= 1 ;
+	sfinfo.format		= SF_FORMAT_RF64 | SF_FORMAT_PCM_16 ;
+
+	file = test_open_file_or_die (filename, SFM_WRITE, &sfinfo, SF_TRUE, __LINE__) ;
+
+	exit_if_true (sf_command (file, SFC_RF64_GET_BW64, NULL, 0) != SF_FALSE, "\n\nLine %d: sf_command failed.\n", __LINE__) ;
+	exit_if_true (sf_command (file, SFC_RF64_SET_BW64, NULL, SF_TRUE) != SF_TRUE, "\n\nLine %d: sf_command failed.\n", __LINE__) ;
+
+	test_write_short_or_die (file, 0, output, ARRAY_LEN (output), __LINE__) ;
+
+	/* Can't change the marker after data has been written. */
+	exit_if_true (sf_command (file, SFC_RF64_SET_BW64, NULL, SF_FALSE) != SF_TRUE, "\n\nLine %d: sf_command failed.\n", __LINE__) ;
+
+	sf_close (file) ;
+
+	bw64_check_marker (filename, __LINE__) ;
+
+	/* Read back. */
+	memset (input, 0, sizeof (input)) ;
+	sf_info_clear (&sfinfo) ;
+
+	file = test_open_file_or_die (filename, SFM_READ, &sfinfo, SF_TRUE, __LINE__) ;
+
+	exit_if_true (sfinfo.format != (SF_FORMAT_RF64 | SF_FORMAT_PCM_16), "\n\nLine %d: Bad format 0x%x.\n", __LINE__, sfinfo.format) ;
+	exit_if_true (sfinfo.frames != ARRAY_LEN (output), "\n\nLine %d: Incorrect number of frames in file. (%d should be %d)\n", __LINE__, (int) sfinfo.frames, (int) ARRAY_LEN (output)) ;
+	exit_if_true (sf_command (file, SFC_RF64_GET_BW64, NULL, 0) != SF_TRUE, "\n\nLine %d: BW64 marker not detected.\n", __LINE__) ;
+
+	check_log_buffer_or_die (file, __LINE__) ;
+
+	test_read_short_or_die (file, 0, input, ARRAY_LEN (output), __LINE__) ;
+
+	sf_close (file) ;
+
+	for (k = 0 ; k < ARRAY_LEN (output) ; k++)
+		exit_if_true (input [k] != output [k],
+			"\n\nLine: %d: Error on input %d, expected %d, got %d\n", __LINE__, k, output [k], input [k]) ;
+
+	/* Append in RDWR mode; the header rewrite must keep the BW64 marker. */
+	sf_info_clear (&sfinfo) ;
+	file = test_open_file_or_die (filename, SFM_RDWR, &sfinfo, SF_TRUE, __LINE__) ;
+	test_seek_or_die (file, 0, SEEK_END, ARRAY_LEN (output), sfinfo.channels, __LINE__) ;
+	test_write_short_or_die (file, 0, output, ARRAY_LEN (output), __LINE__) ;
+	sf_close (file) ;
+
+	bw64_check_marker (filename, __LINE__) ;
+
+	sf_info_clear (&sfinfo) ;
+	file = test_open_file_or_die (filename, SFM_READ, &sfinfo, SF_TRUE, __LINE__) ;
+	exit_if_true (sfinfo.frames != 2 * ARRAY_LEN (output), "\n\nLine %d: Incorrect number of frames in file. (%d should be %d)\n", __LINE__, (int) sfinfo.frames, (int) (2 * ARRAY_LEN (output))) ;
+	test_read_short_or_die (file, 0, input, ARRAY_LEN (input), __LINE__) ;
+	sf_close (file) ;
+
+	for (k = 0 ; k < ARRAY_LEN (input) ; k++)
+		exit_if_true (input [k] != output [k % ARRAY_LEN (output)],
+			"\n\nLine: %d: Error on input %d, expected %d, got %d\n", __LINE__, k, output [k % ARRAY_LEN (output)], input [k]) ;
+
+	puts ("ok") ;
+	unlink (filename) ;
+
+	return ;
+} /* bw64_test */
 
 static void
 rf64_long_file_downgrade_test (const char *filename)

@@ -41,6 +41,7 @@
 ** Macros to handle big/little endian issues.
 */
 #define	RF64_MARKER		MAKE_MARKER ('R', 'F', '6', '4')
+#define	BW64_MARKER		MAKE_MARKER ('B', 'W', '6', '4')
 #define	RIFF_MARKER		MAKE_MARKER ('R', 'I', 'F', 'F')
 #define	JUNK_MARKER		MAKE_MARKER ('J', 'U', 'N', 'K')
 #define	FFFF_MARKER		MAKE_MARKER (0xff, 0xff, 0xff, 0xff)
@@ -189,13 +190,16 @@ rf64_read_header (SF_PRIVATE *psf, int *blockalign, int *framesperblock)
 
 	/* Set position to start of file to begin reading header. */
 	psf_binheader_readf (psf, "pmmm", 0, &marker, marks, marks + 1) ;
-	if (marker != RF64_MARKER || marks [1] != WAVE_MARKER)
+	if ((marker != RF64_MARKER && marker != BW64_MARKER) || marks [1] != WAVE_MARKER)
 		return SFE_RF64_NOT_RF64 ;
 
+	/* BW64 (ITU-R BS.2088) is RF64 with a different file marker. */
+	wpriv->bw64 = (marker == BW64_MARKER) ? SF_TRUE : SF_FALSE ;
+
 	if (marks [0] == FFFF_MARKER)
-		psf_log_printf (psf, "%M\n  %M\n", RF64_MARKER, WAVE_MARKER) ;
+		psf_log_printf (psf, "%M\n  %M\n", marker, WAVE_MARKER) ;
 	else
-		psf_log_printf (psf, "%M : 0x%x (should be 0xFFFFFFFF)\n  %M\n", RF64_MARKER, WAVE_MARKER) ;
+		psf_log_printf (psf, "%M : 0x%x (should be 0xFFFFFFFF)\n  %M\n", marker, marks [0], WAVE_MARKER) ;
 
 	while (!done)
 	{
@@ -669,7 +673,7 @@ rf64_write_header (SF_PRIVATE *psf, int calc_length)
 		add_fact_chunk = 1 ;
 		}
 	else
-	{	psf_binheader_writef (psf, "em4m", BHWm (RF64_MARKER), BHW4 (0xffffffff), BHWm (WAVE_MARKER)) ;
+	{	psf_binheader_writef (psf, "em4m", BHWm (wpriv->bw64 ? BW64_MARKER : RF64_MARKER), BHW4 (0xffffffff), BHWm (WAVE_MARKER)) ;
 		/* Currently no table. */
 		psf_binheader_writef (psf, "m48884", BHWm (ds64_MARKER), BHW4 (28), BHW8 (psf->filelength - 8), BHW8 (psf->datalength), BHW8 (psf->sf.frames), BHW4 (0)) ;
 		} ;
@@ -841,6 +845,14 @@ rf64_command (SF_PRIVATE *psf, int command, void * UNUSED (data), int datasize)
 			if (psf->have_written == 0)
 				wpriv->rf64_downgrade = datasize ? SF_TRUE : SF_FALSE ;
 			return wpriv->rf64_downgrade ;
+
+		case SFC_RF64_SET_BW64 :
+			if (psf->have_written == 0)
+				wpriv->bw64 = datasize ? SF_TRUE : SF_FALSE ;
+			return wpriv->bw64 ;
+
+		case SFC_RF64_GET_BW64 :
+			return wpriv->bw64 ;
 
 		default :
 			break ;
