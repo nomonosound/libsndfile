@@ -2876,7 +2876,8 @@ retry:
 	if (buffer [0] == MAKE_MARKER ('2', 'B', 'I', 'T'))
 		return SF_FORMAT_AVR ;
 
-	if (buffer [0] == MAKE_MARKER ('R', 'F', '6', '4') && buffer [2] == MAKE_MARKER ('W', 'A', 'V', 'E'))
+	if ((buffer [0] == MAKE_MARKER ('R', 'F', '6', '4') || buffer [0] == MAKE_MARKER ('B', 'W', '6', '4'))
+			&& buffer [2] == MAKE_MARKER ('W', 'A', 'V', 'E'))
 		return SF_FORMAT_RF64 ;
 
 	if (buffer [0] == MAKE_MARKER ('I', 'D', '3', 2) || buffer [0] == MAKE_MARKER ('I', 'D', '3', 3)

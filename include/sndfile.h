@@ -218,6 +218,15 @@ enum
 	*/
 	SFC_RF64_AUTO_DOWNGRADE			= 0x1210,
 
+	/*
+	** Nomono fork extension: write RF64 files with the BW64 (ITU-R BS.2088)
+	** file marker instead of RF64. Must be set before any data is written.
+	** BW64 files are read as SF_FORMAT_RF64; SFC_RF64_GET_BW64 reports
+	** whether the marker was BW64.
+	*/
+	SFC_RF64_SET_BW64				= 0x1211,
+	SFC_RF64_GET_BW64				= 0x1212,
+
 	SFC_SET_VBR_ENCODING_QUALITY	= 0x1300,
 	SFC_SET_COMPRESSION_LEVEL		= 0x1301,
 
